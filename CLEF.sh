@@ -40,7 +40,7 @@ _ADD=1
 POURCENT=0
 STDOUT="/dev/stdout"
 
-VERSION="0.0.1"
+VERSION="0.0.2"
 AUTHOR='Maurice LAMBERT'
 DESCRIPTION='This script collects maximum evidence for forensic investigations.'
 COPYRIGHT='
@@ -527,6 +527,12 @@ function get_disks() {
         [fdisk]="fdisk -l"
         [df]="df -h"
         [findmnt]="findmnt -a -A"
+        [vgdisplay]="vgdisplay -v"
+        [lvdisplay]="lvdisplay -v"
+        [vgs]="vgs --all"
+        [lvs]="lvs --all"
+        [free]="free"
+        [cat]="cat /proc/partitions"
     )
 
     for command in "${!_get_disks[@]}"
@@ -542,6 +548,11 @@ function get_disks() {
         set +e  # permissions error on non existant files
         du -sh / > "du.txt" 2>>errors.txt
         set -e
+    fi
+
+    if [[ -e "/dev/mapper" ]]
+    then
+        ls -l /dev/mapper > "mapper.txt" 2>>errors.txt
     fi
 
     log_debug "Copy files fstab mtab..."
@@ -652,6 +663,7 @@ function get_process() {
     declare -A _get_process=(
         [pstree]="pstree"
         [ps]="ps faux"
+        [top]="top -H -b -n 1"
     )
 
     for command in "${!_get_process[@]}"
@@ -664,6 +676,10 @@ function get_process() {
 
     if [[ "${commands[@]}" =~ $'\nps\n' ]]; then
         ps -ewo "%p,%P,%x,%t,%u,%c,%a" > "ps2.txt"
+    fi
+
+    if [[ "${commands[@]}" =~ $'\ntop\n' ]]; then
+        top -b -n 1 > "top2.txt"
     fi
 
     log_info "Process are successfully saved."
@@ -956,6 +972,9 @@ function get_hardware() {
 
     declare -A _get_hardware=(
         [lspci]="lspci -kDq"
+        [dmidecode]="dmidecode"
+        [lscpu]="lscpu -a -p"
+        [cat]="cat /proc/cpuinfo"
     )
 
     for command in "${!_get_hardware[@]}"
@@ -965,6 +984,10 @@ function get_hardware() {
             ${_get_hardware[$command]} > "${command}.txt" 2>>errors.txt
         fi
     done
+
+    if [[ "${commands[@]}" =~ $'\nlscpu\n' ]]; then
+        lscpu > "lscpu2.txt" 2>>errors.txt
+    fi
 
     log_info "Hardware state are successfully saved."
     cd ..
@@ -1068,6 +1091,7 @@ function get_configurations() {
         [nft]="sudo nft list tables"
         [firewalld-cmd]="firewall-cmd --list-all"
         [sshd]="sshd -T"
+        [sysctl]="sysctl -a"
     )
 
     for command in "${!_get_conf[@]}"
@@ -1086,6 +1110,7 @@ function get_configurations() {
         [apparmor]=/etc/apparmor*/*.conf
         [avahi]=/etc/avahi/*.conf
         [firewalld]=/etc/firewalld/*.conf
+        [grub]=/boot/grub/grub.conf*
         [httpd]=/etc/httpd/*.conf
         [ipsec]="/etc/ipsec* /etc/ipsec**/*"
         [lighthttpd]=/etc/lighthttpd/*.conf
@@ -1107,6 +1132,7 @@ function get_configurations() {
         [sudo]="/etc/sudo* /etc/sudo**/*"
         [sudoers]="/etc/sudoers* /etc/sudoers**/*"
         [sysctl]="/etc/sysctl* /etc/sysctl**/*"
+        [yum]="/etc/yum.* /etc/yum**/*"
     )
 
     for directory in "${!files[@]}"
@@ -1186,7 +1212,7 @@ function get_suspicious() {
     mkdir "${dir}" && cd "${dir}"
     log_info "The ${dir} report directory is created and it is the new current directory"
 
-    log_info "Collect suspicious files (/tmp with +x permissions)"
+    log_info "Collect suspicious files (in /tmp with +x permissions)"
     find /tmp -type f -perm /+x | while read filename
     do 
         copy_files "${filename}"
@@ -1204,6 +1230,54 @@ function get_suspicious() {
     log_info "Suspicious files state are successfully saved."
     cd ..
     show_info "COLLECTED: suspicious files" "OK" $POURCENT
+    return 0
+}
+
+function get_states() {
+    #
+    # @desc   :: This function saves system state
+    #
+
+    show_info "Get states..." "INFO" $POURCENT
+    local dir="states"
+    mkdir "${dir}" && cd "${dir}"
+    log_info "The ${dir} report directory is created and it is the new current directory"
+
+    declare -A _get_conf=(
+        [iostat]="iostat -t -N -x 1 2"
+        [vmstat]="vmstat"
+        [numastat]="numastat"
+        [mpstat]="mpstat"
+    )
+
+    for command in "${!_get_conf[@]}"
+    do
+        if [[ "${commands[@]}" =~ $'\n'"${command}"$'\n' ]]; then
+            log_info "Detect '${command}' is installed."
+            ${_get_conf[$command]} > "${command}.txt" 2>>errors.txt
+        fi
+    done
+
+    if [[ "${commands[@]}" =~ $'\nnfsstat\n' ]]; then
+        log_info "Detect 'nfsstat' is installed."
+        set +e
+        nfsstat > "nfsstat.txt" 2>>errors.txt
+        set -e
+    fi
+
+    local files=(/proc/interrupts /proc/meminfo /proc/buddyinfo /proc/slabinfo)
+
+    for file in files
+    do
+        if [[ -e "${file}" ]]
+        then
+            cat "${file}" > "${file##*/}" 
+        fi
+    done
+
+    log_info "System state is successfully saved."
+    cd ..
+    show_info "COLLECTED: state files" "OK" $POURCENT
     return 0
 }
 
@@ -1462,6 +1536,8 @@ function main() {
 
     get_suspicious
     POURCENT=$((POURCENT+_ADD))
+
+    get_states
 
     show_info "Evidences are collected successfully !" "OK" $POURCENT
     echo -e "\n"
