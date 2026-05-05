@@ -13,6 +13,8 @@ This script collect evidence on a Linux system.
  - work on minimal systems like containers (tested on docker)
  - work offline, in chroot or other method to isolate your Linux
 
+This script generate a full TAR archive with evidences from the live linux system, you should push/pull it on your own system for investigation.
+
 ## Requirements
 
 This package require:
@@ -23,11 +25,34 @@ This package require:
 
 ## Installation
 
+### cURL
+
+```bash
+curl -O https://raw.githubusercontent.com/mauricelambert/CLEF/refs/heads/main/CLEF.sh
+```
+
+### wget
+
+```bash
+wget https://raw.githubusercontent.com/mauricelambert/CLEF/refs/heads/main/CLEF.sh
+```
+
+### git
+
 ```bash
 git clone https://github.com/mauricelambert/CLEF.git
+cd CLEF
 ```
 
 ## Usages
+
+### Basic usage in incident response
+
+```bash
+sudo bash CLEF.sh -f
+```
+
+### Options/Flags arguments
 
 ```bash
 # Help
